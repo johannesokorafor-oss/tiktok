@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TikTok Cover &amp; Upload Automation</title>
+<style>
+  :root { --bg:#0c0e14; --panel:#151926; --panel2:#1c2133; --txt:#e9ecf5; --dim:#96a0bb;
+          --ok:#3ddc97; --warn:#ffce5c; --err:#ff6b6b; --accent:#7c9dff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:14px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif; }
+  header { padding:18px 24px; background:linear-gradient(90deg,#161a2b,#0d1018);
+           border-bottom:1px solid #262c42; display:flex; gap:16px; align-items:center; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.3px; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:12px; background:var(--panel2); color:var(--dim); }
+  .pill.on { background:rgba(61,220,151,.15); color:var(--ok); }
+  .pill.off { background:rgba(255,107,107,.15); color:var(--err); }
+  .pill.warn { background:rgba(255,206,92,.15); color:var(--warn); }
+  main { display:grid; grid-template-columns: 340px 1fr; gap:18px; padding:18px 24px; }
+  .card { background:var(--panel); border:1px solid #232941; border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); margin:0 0 12px; }
+  .kv { display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px dashed #232941; }
+  .kv:last-child { border-bottom:0; }
+  .kv span:first-child { color:var(--dim); }
+  button { background:var(--panel2); color:var(--txt); border:1px solid #2c3450; border-radius:8px;
+           padding:7px 12px; cursor:pointer; font-size:13px; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#0b1020; border-color:var(--accent); font-weight:600; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #232941; font-size:13px; vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+  tr.sel { background:#1a2036; }
+  tr:hover { background:#181d2e; cursor:pointer; }
+  .state { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--panel2); }
+  .state.COMPLETED,.state.UPLOADED { background:rgba(61,220,151,.16); color:var(--ok); }
+  .state.FAILED { background:rgba(255,107,107,.16); color:var(--err); }
+  .state.RETRY_PENDING,.state.WAITING_FOR_PAIR,.state.DUPLICATE { background:rgba(255,206,92,.16); color:var(--warn); }
+  .detail { display:grid; grid-template-columns: 240px 1fr; gap:18px; }
+  .cover { width:100%; border-radius:10px; border:1px solid #2c3450; background:#000; }
+  textarea,input,select { width:100%; background:#10141f; color:var(--txt); border:1px solid #2c3450;
+           border-radius:8px; padding:8px; font:13px/1.4 inherit; margin-bottom:8px; }
+  pre { background:#10141f; border:1px solid #232941; border-radius:8px; padding:10px; overflow:auto;
+        max-height:260px; font-size:12px; color:#c8d2ee; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .muted { color:var(--dim); font-size:12px; }
+  .err { color:var(--err); }
+</style>
+</head>
+<body>
+<header>
+  <h1>TikTok Cover &amp; Upload Automation</h1>
+  <span id="hdr-watcher" class="pill">watcher …</span>
+  <span id="hdr-mode" class="pill">mode …</span>
+  <span id="hdr-auth" class="pill">tiktok …</span>
+  <span id="hdr-provider" class="pill">provider …</span>
+  <span style="flex:1"></span>
+  <button onclick="ctl('scan')">Scan now</button>
+  <button onclick="ctl('start')">Start</button>
+  <button onclick="ctl('stop')">Stop</button>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <h2>Watcher</h2>
+      <div id="watcher-info"></div>
+      <div class="row" style="margin-top:10px">
+        <button onclick="openFolder(null)">Open output folder</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>TikTok</h2>
+      <div id="auth-info"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" onclick="location.href='/tiktok/login'">Connect</button>
+        <button onclick="post('/api/tiktok/refresh')">Refresh token</button>
+        <button onclick="post('/api/tiktok/logout')">Disconnect</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Image providers</h2>
+      <div id="providers"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Jobs</h2>
+      <table><thead><tr><th>Job</th><th>Video</th><th>State</th><th>Hook</th><th>Upload</th></tr></thead>
+      <tbody id="jobs"></tbody></table>
+    </div>
+    <div class="card" id="detail-card" style="display:none">
+      <h2>Job detail</h2>
+      <div class="detail">
+        <div>
+          <img id="cover" class="cover" alt="cover preview" />
+          <div class="row" style="margin-top:10px">
+            <button onclick="openFolder(currentOutput)">Open folder</button>
+          </div>
+        </div>
+        <div>
+          <div id="detail-info"></div>
+          <h3 style="font-size:13px;color:var(--dim)">Overrides (applied on regenerate)</h3>
+          <input id="ov-hook" placeholder="3-word cover hook, e.g. DEINE SEELE SPRICHT" />
+          <select id="ov-style">
+            <option value="">style: automatic</option>
+            <option>CINEMATIC_MYSTICAL</option><option>DARK_LUXURY</option><option>CLEAN_MODERN</option>
+          </select>
+          <textarea id="ov-prompt" rows="3" placeholder="image prompt override"></textarea>
+          <textarea id="ov-caption" rows="3" placeholder="TikTok caption override"></textarea>
+          <div class="row">
+            <button class="primary" onclick="saveAndRegen()">Save &amp; regenerate cover</button>
+            <button onclick="retry(false)">Retry</button>
+            <button onclick="retry(true)">Force reprocess</button>
+          </div>
+          <h3 style="font-size:13px;color:var(--dim)">Events</h3>
+          <pre id="events"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+let currentJob = null, currentOutput = null;
+
+const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+async function get(u){ const r = await fetch(u); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+async function post(u, body){ const r = await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
+  body: body? JSON.stringify(body): '{}'}); refresh(); return r.json().catch(()=>({})); }
+async function ctl(a){ await post('/api/watcher/'+a); refresh(); }
+function openFolder(p){ post('/api/open-folder', {path: p || ''}); }
+
+function kv(k,v){ return `<div class="kv"><span>${esc(k)}</span><span>${v}</span></div>`; }
+
+async function refresh(){
+  try {
+    const s = await get('/api/status');
+    const w = s.watcher, st = s.settings;
+    document.getElementById('hdr-watcher').className = 'pill ' + (w.running?'on':'off');
+    document.getElementById('hdr-watcher').textContent = 'watcher ' + (w.running?'running':'stopped');
+    document.getElementById('hdr-mode').className = 'pill ' + (st.dry_run?'warn':'on');
+    document.getElementById('hdr-mode').textContent = st.dry_run? 'DRY RUN' : (st.tiktok_mock?'MOCK':'LIVE upload');
+    const a = s.tiktok;
+    document.getElementById('hdr-auth').className = 'pill ' + (a.authenticated?'on':'off');
+    document.getElementById('hdr-auth').textContent = 'tiktok ' + (a.authenticated?'connected':'not connected');
+    const prim = s.providers[0];
+    document.getElementById('hdr-provider').className = 'pill ' + (prim && prim.healthy?'on':'warn');
+    document.getElementById('hdr-provider').textContent = prim ? `${prim.name} · ${prim.cost}` : 'no provider';
+
+    document.getElementById('watcher-info').innerHTML =
+      kv('folder', esc(w.watch_dir)) + kv('recursive', w.recursive) +
+      kv('stability', w.stability_seconds + 's') + kv('current job', esc(w.current_job||'—')) +
+      kv('quality', esc(st.quality_mode)) + kv('style', esc(st.style_preset)) +
+      kv('post mode', esc(st.post_mode)) + kv('AIGC flag', st.content_is_aigc) +
+      kv('paid APIs', st.allow_paid_api ? 'allowed' : 'blocked') +
+      (w.errors && w.errors.length ? `<div class="err">${esc(w.errors[0])}</div>`:'');
+
+    document.getElementById('auth-info').innerHTML =
+      kv('client configured', a.client_configured) + kv('authenticated', a.authenticated) +
+      kv('open id', esc(a.open_id||'—')) + kv('scopes', esc(a.scope || a.scopes)) +
+      kv('token expires in', a.expires_in_seconds + 's') + kv('redirect', esc(a.redirect_uri));
+
+    document.getElementById('providers').innerHTML = s.providers.map(p =>
+      kv(p.name + ' · ' + p.cost, `<span class="${p.healthy?'':'err'}">${esc(p.detail)}</span>`)).join('');
+
+    const j = await get('/api/jobs?limit=30');
+    document.getElementById('jobs').innerHTML = j.jobs.map(job => `
+      <tr class="${job.id===currentJob?'sel':''}" onclick="showJob('${job.id}')">
+        <td>${esc(job.id)}</td><td>${esc(job.base_name)}</td>
+        <td><span class="state ${esc(job.state)}">${esc(job.state)}</span></td>
+        <td>${esc(job.plan? job.plan.cover_text : '—')}</td>
+        <td>${esc(job.upload_status || (job.dry_run?'dry-run':'—'))}${job.error?` <span class="err">!</span>`:''}</td>
+      </tr>`).join('');
+    if (currentJob) showJob(currentJob, true);
+  } catch(e){ console.error(e); }
+}
+
+async function showJob(id, quiet){
+  currentJob = id;
+  const job = await get('/api/jobs/'+id);
+  currentOutput = job.output_dir;
+  document.getElementById('detail-card').style.display = 'block';
+  const img = document.getElementById('cover');
+  img.src = job.cover_path ? `/api/jobs/${id}/cover?ts=${Date.now()}` : '';
+  const plan = job.plan || {};
+  document.getElementById('detail-info').innerHTML =
+    kv('state', esc(job.state)) + kv('video', esc(job.video_path)) +
+    kv('sha256', esc((job.video_sha256||'').slice(0,16)+'…')) +
+    kv('language', esc(plan.language)) + kv('hook', esc(plan.cover_text)) +
+    kv('style', esc(plan.style_preset)) + kv('hashtags', esc((plan.hashtags||[]).join(' '))) +
+    kv('publish id', esc(job.publish_id||'—')) + kv('upload status', esc(job.upload_status||'—')) +
+    kv('output', esc(job.output_dir||'—')) +
+    (job.error? `<div class="err">${esc(job.error)}</div>`:'');
+  document.getElementById('events').textContent = (job.events||[]).map(e =>
+    `${e.ts}  ${e.event}  ${e.message||''}`).join('\n');
+  if (!quiet){
+    document.getElementById('ov-hook').value = (job.overrides||{}).hook || '';
+    document.getElementById('ov-prompt').value = (job.overrides||{}).image_prompt || '';
+    document.getElementById('ov-caption').value = (job.overrides||{}).caption || '';
+    document.getElementById('ov-style').value = (job.overrides||{}).style || '';
+  }
+}
+
+async function saveAndRegen(){
+  if(!currentJob) return;
+  await post(`/api/jobs/${currentJob}/overrides`, {
+    hook: document.getElementById('ov-hook').value || null,
+    image_prompt: document.getElementById('ov-prompt').value || null,
+    caption: document.getElementById('ov-caption').value || null,
+    style: document.getElementById('ov-style').value || null});
+  await post(`/api/jobs/${currentJob}/regenerate-cover`);
+}
+async function retry(force){ if(currentJob) await post(`/api/jobs/${currentJob}/retry?force=${force}`); }
+
+refresh(); setInterval(refresh, 4000);
+</script>
+</body>
+</html>

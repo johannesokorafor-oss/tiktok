@@ -1,0 +1,161 @@
+# TikTok setup (official Content Posting API only)
+
+This application uses **only** documented TikTok for Developers endpoints.
+No scraping, no browser automation, no private endpoints.
+Documentation was re-checked on **2026-09-26**; the endpoints, scopes and
+limits below are what the app implements.
+
+## 1. Create the developer app
+
+1. Go to <https://developers.tiktok.com/>, log in, create an app.
+2. Add the **Content Posting API** product.
+3. Request the scopes you need:
+   * `video.upload` — *"Share content to creator's account as a draft to
+     further edit and post in TikTok"* → **this is the default mode of this
+     application**.
+   * `user.info.basic` — recommended, used for account identification.
+   * `video.publish` — only if you want `TIKTOK_POST_MODE=DIRECT_POST`
+     (direct posting; requires TikTok's app audit).
+4. Add the redirect URI exactly as in your `.env`, default:
+   `http://localhost:8765/tiktok/callback`
+5. Copy the **Client key** and **Client secret** into `.env`:
+
+```
+TIKTOK_CLIENT_KEY=...
+TIKTOK_CLIENT_SECRET=...
+TIKTOK_REDIRECT_URI=http://localhost:8765/tiktok/callback
+TIKTOK_SCOPES=user.info.basic,video.upload
+```
+
+Never commit these. `.env`, `tokens/`, `credentials/` and
+`state/tiktok_tokens.json` are git-ignored.
+
+> **Unaudited apps:** until TikTok audits your app, posts created through
+> Direct Post are forced to private visibility. The inbox/draft flow used by
+> default is unaffected by that restriction because *you* finish the post
+> inside the TikTok app.
+
+## 2. OAuth
+
+Authorisation code flow (v2):
+
+| Step | Endpoint |
+|---|---|
+| Authorise | `GET https://www.tiktok.com/v2/auth/authorize/?client_key=…&scope=…&response_type=code&redirect_uri=…&state=…` |
+| Token | `POST https://open.tiktokapis.com/v2/oauth/token/` (form-encoded, `grant_type=authorization_code`) |
+| Refresh | same endpoint, `grant_type=refresh_token` |
+| Revoke | `POST https://open.tiktokapis.com/v2/oauth/revoke/` |
+
+* Access tokens expire after ~24 h, refresh tokens after ~365 days.
+* TikTok **rotates the refresh token** on every refresh — the app always
+  persists the new value (`state/tiktok_tokens.json`, user-only permissions).
+* The local callback validates a single-use CSRF `state` value.
+* Tokens are never written to logs; log output and API responses are redacted.
+
+Connect from the dashboard (**Connect** button) or:
+
+```
+python -m app.main auth login      # prints the authorisation URL
+python -m app.main auth status
+python -m app.main auth refresh
+python -m app.main auth logout
+```
+
+## 3. What the app sends (UPLOAD / draft mode — the default)
+
+```
+POST https://open.tiktokapis.com/v2/post/publish/inbox/video/init/
+Authorization: Bearer <access token>
+Content-Type: application/json; charset=UTF-8
+
+{"source_info": {"source": "FILE_UPLOAD",
+                 "video_size": <bytes>,
+                 "chunk_size": <bytes>,
+                 "total_chunk_count": <n>}}
+```
+
+Response → `data.publish_id`, `data.upload_url`. The file is then transferred:
+
+```
+PUT <upload_url>
+Content-Type: video/mp4
+Content-Length: <chunk bytes>
+Content-Range: bytes <first>-<last>/<total>
+```
+
+Chunk rules implemented: 5 MB–64 MB per chunk, final chunk up to 128 MB,
+max 1000 chunks, files below 5 MB are sent as a single chunk. The upload URL
+is valid for one hour.
+
+Finally the app polls:
+
+```
+POST https://open.tiktokapis.com/v2/post/publish/status/fetch/
+{"publish_id": "..."}
+```
+
+and stores the status (e.g. `SEND_TO_USER_INBOX`), the publish id, all errors
+and timestamps in SQLite and in `output/<name>/upload_result.json`.
+
+**The video lands in your TikTok inbox as a draft.** Open the TikTok app,
+tap the notification, review it, adjust the caption/cover if you want and
+press *Post*. This is exactly the "user does the final click" workflow.
+
+### Caption and cover in draft mode
+
+The documented inbox endpoint accepts **only** `source_info` — it takes no
+`title`, `privacy_level` or `video_cover_timestamp_ms`. Therefore:
+
+* The generated caption is **not** sent to TikTok in this mode. It is written
+  to `output/<name>/caption.txt` and shown in the dashboard, ready to paste
+  when you finish the post.
+* The cover cannot be uploaded as a standalone PNG either. Instead the cover
+  is **baked into the video** as the very first frame (default 120 ms overlay,
+  no added duration, audio untouched), so it is the frame TikTok shows by
+  default in the editor and the one you get by leaving the cover slider at the
+  start.
+
+## 4. Optional: DIRECT_POST mode
+
+Set `TIKTOK_POST_MODE=DIRECT_POST` and `TIKTOK_SCOPES=user.info.basic,video.publish`.
+The app then:
+
+1. calls `POST /v2/post/publish/creator_info/query/` and uses a privacy level
+   the creator actually allows (prefers `SELF_ONLY`, i.e. private, so the post
+   still stays reviewable),
+2. calls `POST /v2/post/publish/video/init/` with
+
+```json
+{"post_info": {"title": "<caption>", "privacy_level": "SELF_ONLY",
+               "disable_duet": false, "disable_comment": false,
+               "disable_stitch": false, "video_cover_timestamp_ms": 60},
+ "source_info": {"source": "FILE_UPLOAD", "...": "..."}}
+```
+
+`video_cover_timestamp_ms` points at the middle of the baked-in cover frame,
+which is how the documented API selects a cover (a frame of the video, not an
+uploaded image).
+
+`is_aigc: true` is added **only** when `CONTENT_IS_AIGC=true`. An AI-generated
+thumbnail does not make your video AI-generated content, so the default is
+`false` and the flag is never set automatically.
+
+## 5. Rate limits and retries (enforced client-side)
+
+| Endpoint | Documented limit per user access token |
+|---|---|
+| `…/video/init/` and `…/inbox/video/init/` | 6 requests / minute |
+| `…/status/fetch/` | 30 requests / minute |
+| `…/creator_info/query/` | 20 requests / minute |
+
+Plus a daily per-account posting cap enforced by TikTok
+(`spam_risk_too_many_posts`). The client throttles locally, retries HTTP 429
+and 5xx with exponential backoff (`TIKTOK_MAX_RETRIES`, default 5), honours
+`Retry-After`, and never retries non-retryable errors such as
+`scope_not_authorized`.
+
+## 6. Media requirements the app enforces before uploading
+
+MP4/MOV/WebM, ≤ 4 GB, ≤ 600 s, short side ≥ 360 px, valid H.264 video +
+AAC audio (when the source has audio), full decode pass without errors.
+Nothing that fails validation is ever uploaded.
