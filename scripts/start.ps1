@@ -4,14 +4,12 @@ param([switch]$Foreground)
 . "$PSScriptRoot\_common.ps1"
 Assert-Venv
 
-if (Test-Path $PidFile) {
-    $existing = Get-Content $PidFile | Select-Object -First 1
-    if ($existing -and (Get-Process -Id $existing -ErrorAction SilentlyContinue)) {
-        Write-Host "Already running (PID $existing). Use .\scripts\stop.ps1 first." -ForegroundColor Yellow
-        exit 1
-    }
-    Remove-Item $PidFile -ErrorAction SilentlyContinue
+$existing = Get-RunningPidFromFile
+if ($existing) {
+    Write-Host "Already running (PID $existing). Use .\scripts\stop.ps1 first." -ForegroundColor Yellow
+    exit 1
 }
+Remove-Item $PidFile -ErrorAction SilentlyContinue
 
 if ($Foreground) {
     & $VenvPy -m tta start

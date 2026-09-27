@@ -2,26 +2,45 @@
 
 Rules:
 * ``IMAGE_PROVIDER=auto`` -> first available of: comfyui (if configured),
-  pollinations (free cloud), local.  PAID providers are NEVER auto-selected.
+  pollinations (keyless AI cloud), local.  PAID/UNKNOWN-cost providers are
+  NEVER auto-selected - a billable request can never happen silently.
 * An explicitly selected PAID provider still refuses unless
   ``ALLOW_PAID_API=true``.
 * On generation failure the registry falls back to the local renderer
   (configurable) so a provider outage produces a usable job, not a crash.
+* Every generation reports an honest mode: AI_GENERATED, PROCEDURAL or
+  PROCEDURAL_FALLBACK - a fallback is never presented as AI output.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import Config
-from .base import CostClass, ImageProvider, ImageRequest, ProviderError
+from .base import BILLABLE_CLASSES, ImageProvider, ImageRequest, ProviderError
 from .comfyui import ComfyUIProvider
 from .local_art import LocalArtProvider
 from .openai_image import OpenAIImageProvider
 from .pollinations import PollinationsProvider
 
 log = logging.getLogger("tta.providers")
+
+
+@dataclass
+class GenerationResult:
+    path: Path
+    provider: str          # actual provider that produced the image
+    mode: str              # AI_GENERATED | PROCEDURAL | PROCEDURAL_FALLBACK
+    requested_provider: str = ""
+    fallback_reason: str = ""
+
+
+def _mode_for(provider: ImageProvider, is_fallback: bool) -> str:
+    if provider.generation_kind == "procedural":
+        return "PROCEDURAL_FALLBACK" if is_fallback else "PROCEDURAL"
+    return "AI_GENERATED"
 
 
 class ProviderRegistry:
@@ -44,10 +63,10 @@ class ProviderRegistry:
         pref = (self.preference or "auto").lower()
         if pref != "auto":
             return self.get(pref)
-        # auto: never PAID
+        # auto: never anything billable (PAID or UNKNOWN cost)
         for name in ("comfyui", "pollinations", "local"):
             provider = self.providers.get(name)
-            if provider is None or provider.cost is CostClass.PAID:
+            if provider is None or provider.cost in BILLABLE_CLASSES:
                 continue
             available, reason = provider.availability()
             if available:
@@ -56,21 +75,34 @@ class ProviderRegistry:
             log.debug("provider '%s' unavailable: %s", name, reason)
         return self.get("local")
 
-    def generate(self, request: ImageRequest, out_path: Path) -> tuple[Path, str]:
+    def generate(self, request: ImageRequest, out_path: Path) -> GenerationResult:
         """Generate with the selected provider; fall back to local on failure.
 
-        Returns (path, provider_name_used).  Raises ProviderError only if
-        every eligible provider failed.
+        Returns a :class:`GenerationResult` that honestly records which
+        provider produced the image and whether it was AI-generated,
+        procedural, or a procedural fallback.  Raises ProviderError only
+        if every eligible provider failed.
         """
         provider = self.select()
         try:
-            return provider.generate(request, out_path), provider.name
+            path = provider.generate(request, out_path)
+            return GenerationResult(
+                path=path, provider=provider.name,
+                mode=_mode_for(provider, is_fallback=False),
+                requested_provider=provider.name,
+            )
         except ProviderError as exc:
             log.warning("provider '%s' failed: %s", provider.name, exc)
             if self.fallback_to_local and provider.name != "local":
                 local = self.get("local")
-                log.info("falling back to local renderer")
-                return local.generate(request, out_path), local.name
+                log.info("falling back to local procedural renderer")
+                path = local.generate(request, out_path)
+                return GenerationResult(
+                    path=path, provider=local.name,
+                    mode=_mode_for(local, is_fallback=True),
+                    requested_provider=provider.name,
+                    fallback_reason=str(exc)[:300],
+                )
             raise
 
     def describe(self) -> list[dict]:

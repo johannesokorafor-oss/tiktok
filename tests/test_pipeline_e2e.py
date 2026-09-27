@@ -69,6 +69,10 @@ def test_dry_run_full_pipeline(config, store, fixture_video):
     assert 2 <= len(job.meta["plan"]["cover_text"].split()) <= 4
     assert job.meta["plan"]["style"] == "CINEMATIC_MYSTICAL"
     assert job.meta["image_provider"] == "local"
+    # honest mode recording: local renderer selected directly is PROCEDURAL,
+    # never claimed to be AI-generated
+    assert job.meta["image_generation_mode"] == "PROCEDURAL"
+    assert "image_fallback_reason" not in job.meta
 
     # job.json readable and consistent
     payload = json.loads((out / "job.json").read_text(encoding="utf-8"))
@@ -171,6 +175,26 @@ def test_upload_failure_leads_to_retry(config, store, fixture_video):
     job = pipeline.run_job(store.create_job("uplfail", str(v), str(t)))
     assert job.state == db.RETRY_PENDING
     assert "TikTok upload failed" in job.error
+
+
+def test_fallback_mode_recorded_in_job_meta(config, store, fixture_video):
+    """When the AI provider fails and the local renderer takes over, the
+    job metadata must say PROCEDURAL_FALLBACK - never pretend it was AI."""
+    from tta.providers.local_art import LocalArtProvider
+    from tta.providers.registry import ProviderRegistry
+    from tests.test_providers import _FailingProvider
+
+    registry = ProviderRegistry(
+        {"failing": _FailingProvider(), "local": LocalArtProvider()},
+        preference="failing", fallback_to_local=True,
+    )
+    pipeline = Pipeline(config, store, registry=registry)
+    v, t = _pair(config, fixture_video, "fbmode")
+    job = pipeline.run_job(store.create_job("fbmode", str(v), str(t)))
+    assert job.state == db.COMPLETED, job.error
+    assert job.meta["image_provider"] == "local"
+    assert job.meta["image_generation_mode"] == "PROCEDURAL_FALLBACK"
+    assert "boom" in job.meta["image_fallback_reason"]
 
 
 def test_regenerate_cover(config, store, fixture_video):

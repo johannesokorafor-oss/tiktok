@@ -1,4 +1,4 @@
-"""Local procedural background renderer (CostClass.LOCAL).
+"""Local procedural background renderer (CostClass.LOCAL_FREE, NOT AI).
 
 Generates premium, cinematic 9:16 backgrounds fully offline with Pillow.
 Deterministic for a given prompt/seed.  This provider is always available
@@ -131,7 +131,8 @@ def _bokeh(size, rng: random.Random, color, count=18, max_r=90, alpha=60) -> Ima
 
 class LocalArtProvider(ImageProvider):
     name = "local"
-    cost = CostClass.LOCAL
+    cost = CostClass.LOCAL_FREE
+    generation_kind = "procedural"
 
     def availability(self) -> tuple[bool, str]:
         return True, "built-in procedural renderer (always available)"

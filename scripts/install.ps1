@@ -10,13 +10,12 @@ if (-not $python) {
     Write-Host "Install it from https://www.python.org/downloads/ (check 'Add to PATH') and re-run."
     exit 1
 }
-Write-Host "[ok] Python found: $python"
+Write-Host "[ok] Python found: $($python.Exe) $($python.Args -join ' ')"
 
 # 2. Virtual environment
 if (-not (Test-Path $VenvPy)) {
     Write-Host "Creating virtual environment at $VenvDir ..."
-    $exe, $cmdArgs = Split-Command $python
-    & $exe @cmdArgs -m venv $VenvDir
+    & $python.Exe $python.Args -m venv $VenvDir
     if ($LASTEXITCODE -ne 0) { Write-Host "venv creation failed" -ForegroundColor Red; exit 1 }
 }
 Write-Host "[ok] Virtual environment ready"
@@ -35,12 +34,18 @@ if ($ffmpeg) {
     Write-Host "[ok] FFmpeg found: $($ffmpeg.Source)"
 } else {
     Write-Host "[!!] FFmpeg not found on PATH." -ForegroundColor Yellow
-    $answer = Read-Host "Install FFmpeg now via winget? (y/n)"
-    if ($answer -eq "y") {
-        winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
-        Write-Host "Re-open the terminal afterwards so PATH is refreshed." -ForegroundColor Yellow
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $answer = Read-Host "Install FFmpeg now via winget? (y/n)"
+        if ($answer -eq "y") {
+            winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
+            Write-Host "Re-open the terminal afterwards so PATH is refreshed." -ForegroundColor Yellow
+        } else {
+            Write-Host "Install FFmpeg manually (https://www.gyan.dev/ffmpeg/builds/) or set FFMPEG_PATH/FFPROBE_PATH in .env."
+        }
     } else {
-        Write-Host "Install FFmpeg manually (https://www.gyan.dev/ffmpeg/builds/) or set FFMPEG_PATH/FFPROBE_PATH in .env."
+        Write-Host "winget is not available on this system." -ForegroundColor Yellow
+        Write-Host "Install FFmpeg manually (https://www.gyan.dev/ffmpeg/builds/), add it to PATH,"
+        Write-Host "or set FFMPEG_PATH/FFPROBE_PATH in .env."
     }
 }
 

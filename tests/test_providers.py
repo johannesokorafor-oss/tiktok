@@ -14,10 +14,13 @@ def test_cost_classes_are_honest(tmp_path):
     cfg = Config(home=tmp_path)
     registry = build_registry(cfg)
     costs = {name: p.cost for name, p in registry.providers.items()}
-    assert costs["local"] is CostClass.LOCAL
-    assert costs["comfyui"] is CostClass.LOCAL
-    assert costs["pollinations"] is CostClass.FREE
+    assert costs["local"] is CostClass.LOCAL_FREE
+    assert costs["comfyui"] is CostClass.LOCAL_FREE
+    assert costs["pollinations"] is CostClass.FREE_WITH_LIMITS
     assert costs["openai"] is CostClass.PAID
+    kinds = {name: p.generation_kind for name, p in registry.providers.items()}
+    assert kinds["local"] == "procedural"        # never presented as AI
+    assert kinds["pollinations"] == kinds["comfyui"] == kinds["openai"] == "ai"
 
 
 @pytest.mark.parametrize("style", ["CINEMATIC_MYSTICAL", "DARK_LUXURY", "CLEAN_MODERN"])
@@ -60,7 +63,8 @@ def test_auto_never_selects_paid(tmp_path, monkeypatch):
 
 class _FailingProvider(ImageProvider):
     name = "failing"
-    cost = CostClass.FREE
+    cost = CostClass.FREE_WITH_LIMITS
+    generation_kind = "ai"
 
     def availability(self):
         return True, "pretend"
@@ -75,8 +79,11 @@ def test_fallback_to_local_on_failure(tmp_path):
         preference="failing", fallback_to_local=True,
     )
     out = tmp_path / "img.png"
-    path, used = registry.generate(ImageRequest(prompt="x", seed=2), out)
-    assert used == "local" and path.exists()
+    result = registry.generate(ImageRequest(prompt="x", seed=2), out)
+    assert result.provider == "local" and result.path.exists()
+    assert result.mode == "PROCEDURAL_FALLBACK"      # honest: not AI output
+    assert result.requested_provider == "failing"
+    assert "boom" in result.fallback_reason
 
 
 def test_no_fallback_raises_recoverable_error(tmp_path):

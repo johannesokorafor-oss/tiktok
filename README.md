@@ -129,7 +129,7 @@ uploaded twice** unless you force it.
 .\scripts\test.ps1        # or: python -m pytest tests/
 ```
 
-137 tests cover parsing, pairing, stabilization, slow-copy safety,
+138 tests cover parsing, pairing, stabilization, slow-copy safety,
 duplicates, the state machine, restart recovery, concurrency guards,
 typography (incl. umlauts and clipping), FFmpeg processing,
 cover-timestamp math (incl. fractional frame rates and a pixel-level

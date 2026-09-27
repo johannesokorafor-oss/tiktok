@@ -14,10 +14,14 @@ from pathlib import Path
 
 
 class CostClass(enum.Enum):
-    LOCAL = "LOCAL"                    # runs on this machine, no network cost
-    FREE = "FREE"                      # verified free cloud service
-    FREE_WITH_QUOTA = "FREE_WITH_QUOTA"  # free tier with limits
-    PAID = "PAID"                      # costs money per call
+    LOCAL_FREE = "LOCAL_FREE"                  # runs on this machine, no billing
+    FREE_WITH_LIMITS = "FREE_WITH_LIMITS"      # keyless cloud; rate-limited, availability not guaranteed
+    REGISTERED_FREE_QUOTA = "REGISTERED_FREE_QUOTA"  # needs an account; free tier with quota
+    PAID = "PAID"                              # costs money per call
+    UNKNOWN = "UNKNOWN"                        # cost not verifiable - treated like PAID
+
+# cost classes that must never be selected/called automatically
+BILLABLE_CLASSES = (CostClass.PAID, CostClass.UNKNOWN)
 
 
 class ProviderError(RuntimeError):
@@ -71,7 +75,9 @@ class ImageProvider(ABC):
     """A real, callable image source."""
 
     name: str = "base"
-    cost: CostClass = CostClass.LOCAL
+    cost: CostClass = CostClass.UNKNOWN
+    #: "ai" for genuine generative models, "procedural" for deterministic art
+    generation_kind: str = "ai"
 
     @abstractmethod
     def availability(self) -> tuple[bool, str]:
@@ -90,6 +96,7 @@ class ImageProvider(ABC):
         return {
             "name": self.name,
             "cost": self.cost.value,
+            "kind": self.generation_kind,
             "available": available,
             "detail": reason,
         }

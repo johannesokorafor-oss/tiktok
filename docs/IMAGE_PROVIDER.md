@@ -3,12 +3,22 @@
 Cover backgrounds are produced by a pluggable provider system
 (`src/tta/providers/`). Every provider declares an honest cost class:
 
-| Provider | Cost class | Needs | Notes |
-|---|---|---|---|
-| `local` | `LOCAL` | nothing | built-in procedural renderer (Pillow): cinematic gradients, celestial glow, light rays, silhouettes, bokeh, grain, vignette. Always available; deterministic per prompt. |
-| `pollinations` | `FREE` | internet | https://image.pollinations.ai — keyless, genuinely free image generation. |
-| `comfyui` | `LOCAL` | running ComfyUI server | talks to a ComfyUI-compatible API (`POST /prompt`, `GET /history`, `GET /view`). |
-| `openai` | `PAID` | `OPENAI_API_KEY` + `ALLOW_PAID_API=true` | gpt-image-1, 1024×1536 → resized to 1080×1920. |
+| Provider | Cost class | Kind | Needs | Notes |
+|---|---|---|---|---|
+| `local` | `LOCAL_FREE` | procedural (NOT AI) | nothing | built-in procedural renderer (Pillow): cinematic gradients, celestial glow, light rays, silhouettes, bokeh, grain, vignette. Always available; deterministic per prompt. |
+| `pollinations` | `FREE_WITH_LIMITS` | AI | internet | https://image.pollinations.ai — keyless AI image generation. Rate-limited; availability and pricing are controlled by a third party and not guaranteed to stay free. |
+| `comfyui` | `LOCAL_FREE` | AI | running ComfyUI server + model | Stable-Diffusion-class AI images on your own GPU via a ComfyUI-compatible API (`POST /prompt`, `GET /history`, `GET /view`). Recommended path for guaranteed-free real AI covers. |
+| `openai` | `PAID` | AI | `OPENAI_API_KEY` + `ALLOW_PAID_API=true` | gpt-image-1, 1024×1536 → resized to 1080×1920. Every call is billed. |
+
+Every job records the honest outcome in its metadata and `job.json`:
+
+```
+"image_provider":        "pollinations" | "comfyui" | "local" | "openai"
+"image_generation_mode": "AI_GENERATED" | "PROCEDURAL" | "PROCEDURAL_FALLBACK"
+"image_fallback_reason": "<error>"      (only present when a fallback happened)
+```
+
+A procedural fallback is never presented as AI output.
 
 ## Selection
 
@@ -17,9 +27,10 @@ IMAGE_PROVIDER=auto        # default
 ```
 
 `auto` picks the first *available* of: `comfyui` → `pollinations` →
-`local`. **PAID providers are never auto-selected.** Explicitly selecting
-`openai` still refuses to run unless `ALLOW_PAID_API=true` — a paid API
-call can never happen silently.
+`local`. **PAID (and unknown-cost) providers are never auto-selected.**
+Explicitly selecting `openai` still refuses to run unless
+`ALLOW_PAID_API=true` (default `false`) — a billable API call can never
+happen silently.
 
 If the selected provider fails at generation time, the job falls back to
 the `local` renderer (disable with `IMAGE_FALLBACK_TO_LOCAL=false`, in

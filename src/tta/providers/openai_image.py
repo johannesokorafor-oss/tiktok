@@ -26,6 +26,7 @@ API_URL = "https://api.openai.com/v1/images/generations"
 class OpenAIImageProvider(ImageProvider):
     name = "openai"
     cost = CostClass.PAID
+    generation_kind = "ai"
 
     def __init__(self, api_key: str, allow_paid: bool,
                  model: str = "gpt-image-1", session: requests.Session | None = None):

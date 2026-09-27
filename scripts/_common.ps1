@@ -10,24 +10,34 @@ if (-not (Test-Path $VenvPy)) {
 }
 $script:PidFile = Join-Path (Join-Path $RepoRoot "data") "tta.pid"
 
-function Split-Command([string]$Command) {
-    $parts = $Command.Split(" ")
-    $exe = $parts[0]
-    $cmdArgs = @()
-    if ($parts.Length -gt 1) { $cmdArgs = $parts[1..($parts.Length - 1)] }
-    return @($exe, $cmdArgs)
-}
-
 function Find-SystemPython {
-    foreach ($cand in @("py -3", "python", "python3")) {
+    # Returns a hashtable @{ Exe = ...; Args = @(...) } or $null.
+    # Note: arrays passed to native executables expand element-by-element,
+    # and an empty array contributes no arguments - no manual splitting.
+    $candidates = @(
+        @{ Exe = "py";      Args = @("-3") },
+        @{ Exe = "python";  Args = @() },
+        @{ Exe = "python3"; Args = @() }
+    )
+    foreach ($cand in $candidates) {
+        if (-not (Get-Command $cand.Exe -ErrorAction SilentlyContinue)) { continue }
         try {
-            $exe, $cmdArgs = Split-Command $cand
-            $v = & $exe @cmdArgs --version 2>$null
-            if ($LASTEXITCODE -eq 0 -and $v -match "Python 3\.(1[0-9])") {
+            $v = & $cand.Exe $cand.Args --version 2>$null
+            if ($LASTEXITCODE -eq 0 -and "$v" -match "Python 3\.(1[0-9])") {
                 return $cand
             }
         } catch { }
     }
+    return $null
+}
+
+function Get-RunningPidFromFile {
+    # Returns the PID from $PidFile if that process is alive, else $null.
+    if (-not (Test-Path $PidFile)) { return $null }
+    $raw = (Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $procId = 0
+    if (-not [int]::TryParse("$raw", [ref]$procId)) { return $null }
+    if (Get-Process -Id $procId -ErrorAction SilentlyContinue) { return $procId }
     return $null
 }
 

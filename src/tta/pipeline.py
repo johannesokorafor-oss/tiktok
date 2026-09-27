@@ -143,10 +143,15 @@ class Pipeline:
             style=plan.style,
         )
         try:
-            _, provider_used = self.registry.generate(request, background)
+            gen = self.registry.generate(request, background)
         except Exception as exc:
             raise PipelineError(f"image generation failed: {exc}") from exc
-        meta_payload["image_provider"] = provider_used
+        meta_payload["image_provider"] = gen.provider
+        meta_payload["image_generation_mode"] = gen.mode
+        if gen.fallback_reason:
+            meta_payload["image_fallback_reason"] = gen.fallback_reason
+            log.warning("job %s: '%s' failed, cover is a PROCEDURAL_FALLBACK "
+                        "by '%s'", job.id, gen.requested_provider, gen.provider)
 
         cover = job_dir / "cover.png"
         try:
@@ -253,11 +258,16 @@ class Pipeline:
             style=plan_data.get("style", "CLEAN_MODERN"),
             seed=int(time.time()) % (2 ** 31),
         )
-        self.registry.generate(request, background)
+        gen = self.registry.generate(request, background)
         cover = job_dir / "cover.png"
         typography.render_cover_text(background, plan_data.get("cover_text", ""), cover)
         shutil.copy2(cover, self.config.covers_dir / f"{job.id}.png")
-        self.store.update_fields(job.id, cover_path=str(cover))
+        meta = dict(job.meta or {})
+        meta["image_provider"] = gen.provider
+        meta["image_generation_mode"] = gen.mode
+        if gen.fallback_reason:
+            meta["image_fallback_reason"] = gen.fallback_reason
+        self.store.update_fields(job.id, cover_path=str(cover), meta=meta)
         return cover
 
     def _write_job_json(self, job_id: str, job_dir: Path) -> None:

@@ -1,4 +1,4 @@
-"""Pollinations.ai provider (CostClass.FREE).
+"""Pollinations.ai provider (CostClass.FREE_WITH_LIMITS, real AI).
 
 Pollinations offers keyless, genuinely free image generation via a simple
 GET endpoint (https://image.pollinations.ai).  No account, no API key.
@@ -26,7 +26,8 @@ BASE_URL = "https://image.pollinations.ai"
 
 class PollinationsProvider(ImageProvider):
     name = "pollinations"
-    cost = CostClass.FREE
+    cost = CostClass.FREE_WITH_LIMITS
+    generation_kind = "ai"
 
     def __init__(self, timeout: float = 120.0, session: requests.Session | None = None):
         self.timeout = timeout
@@ -36,7 +37,7 @@ class PollinationsProvider(ImageProvider):
         try:
             resp = self.session.get(f"{BASE_URL}/models", timeout=6)
             if resp.ok:
-                return True, "image.pollinations.ai reachable (free, keyless)"
+                return True, "image.pollinations.ai reachable (keyless; rate-limited, availability not guaranteed)"
             return False, f"image.pollinations.ai returned HTTP {resp.status_code}"
         except requests.RequestException as exc:
             return False, f"image.pollinations.ai unreachable: {exc.__class__.__name__}"

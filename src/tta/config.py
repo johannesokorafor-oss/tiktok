@@ -12,7 +12,19 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+def _find_repo_root() -> Path:
+    """Repo root for the documented editable install (<repo>/src/tta).
+
+    If the package was installed non-editable (site-packages), fall back
+    to the current working directory; TTA_HOME always overrides either.
+    """
+    candidate = Path(__file__).resolve().parents[2]
+    if (candidate / "pyproject.toml").is_file() or (candidate / ".env").is_file():
+        return candidate
+    return Path.cwd()
+
+
+REPO_ROOT = _find_repo_root()
 
 
 def _bool(value: str | None, default: bool) -> bool:

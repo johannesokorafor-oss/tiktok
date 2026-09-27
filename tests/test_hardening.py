@@ -224,8 +224,10 @@ def test_registry_falls_back_on_corrupt_cloud_image(tmp_path):
         preference="pollinations", fallback_to_local=True,
     )
     out = tmp_path / "img.png"
-    path, used = registry.generate(ImageRequest(prompt="x", seed=1), out)
-    assert used == "local" and path.exists()
+    result = registry.generate(ImageRequest(prompt="x", seed=1), out)
+    assert result.provider == "local" and result.path.exists()
+    assert result.mode == "PROCEDURAL_FALLBACK"
+    assert "invalid image" in result.fallback_reason
 
 
 # ------------------------------------------------------------------ watcher survival

@@ -1,4 +1,4 @@
-"""ComfyUI-compatible local API provider (CostClass.LOCAL).
+"""ComfyUI-compatible local API provider (CostClass.LOCAL_FREE, real AI).
 
 Talks to a locally running ComfyUI server (default http://127.0.0.1:8188)
 via its standard HTTP API: POST /prompt, poll GET /history/{id},
@@ -52,7 +52,8 @@ DEFAULT_WORKFLOW = {
 
 class ComfyUIProvider(ImageProvider):
     name = "comfyui"
-    cost = CostClass.LOCAL
+    cost = CostClass.LOCAL_FREE
+    generation_kind = "ai"
 
     def __init__(self, base_url: str, workflow_path: str = "",
                  timeout: float = 600.0, session: requests.Session | None = None):
