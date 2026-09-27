@@ -1,0 +1,37 @@
+# Secrets / local config
+.env
+*.env.local
+data/tiktok_tokens.json
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Runtime directories (job artifacts, user media)
+input/
+processing/
+failed/
+archive/
+covers/
+logs/
+output/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PID files
+*.pid
