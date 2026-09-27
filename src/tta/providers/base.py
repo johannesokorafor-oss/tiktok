@@ -38,6 +38,35 @@ class ImageRequest:
     style: str = "CLEAN_MODERN"
 
 
+def write_normalized_png(raw: bytes, out_path: Path, width: int, height: int) -> Path:
+    """Validate raw image bytes and write them as PNG at the exact size.
+
+    Any invalid/corrupt payload raises :class:`ProviderError` (so registries
+    can fall back) and never leaves partial files behind.
+    """
+    import io
+
+    from PIL import Image, UnidentifiedImageError
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".part")
+    try:
+        try:
+            with Image.open(io.BytesIO(raw)) as img:
+                img.load()  # force full decode - catches truncated data
+                img = img.convert("RGB")
+                if img.size != (width, height):
+                    img = img.resize((width, height), Image.LANCZOS)
+                img.save(tmp, "PNG")
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise ProviderError(f"provider returned invalid image data: {exc}") from exc
+        tmp.replace(out_path)
+        return out_path
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 class ImageProvider(ABC):
     """A real, callable image source."""
 

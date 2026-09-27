@@ -15,8 +15,8 @@ Write-Host "[ok] Python found: $python"
 # 2. Virtual environment
 if (-not (Test-Path $VenvPy)) {
     Write-Host "Creating virtual environment at $VenvDir ..."
-    $parts = $python.Split(" ")
-    & $parts[0] $parts[1..($parts.Length-1)] -m venv $VenvDir
+    $exe, $cmdArgs = Split-Command $python
+    & $exe @cmdArgs -m venv $VenvDir
     if ($LASTEXITCODE -ne 0) { Write-Host "venv creation failed" -ForegroundColor Red; exit 1 }
 }
 Write-Host "[ok] Virtual environment ready"

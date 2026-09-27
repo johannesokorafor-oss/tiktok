@@ -11,7 +11,14 @@ from pathlib import Path
 
 import requests
 
-from .base import CostClass, ImageProvider, ImageRequest, PaidProviderBlocked, ProviderError
+from .base import (
+    CostClass,
+    ImageProvider,
+    ImageRequest,
+    PaidProviderBlocked,
+    ProviderError,
+    write_normalized_png,
+)
 
 API_URL = "https://api.openai.com/v1/images/generations"
 
@@ -62,17 +69,8 @@ class OpenAIImageProvider(ImageProvider):
         data = resp.json().get("data") or []
         if not data or "b64_json" not in data[0]:
             raise ProviderError("OpenAI response contained no image data")
-        raw = base64.b64decode(data[0]["b64_json"])
-
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out_path.with_suffix(".tmp")
-        tmp.write_bytes(raw)
-        from PIL import Image
-
-        with Image.open(tmp) as img:
-            img = img.convert("RGB")
-            if img.size != (request.width, request.height):
-                img = img.resize((request.width, request.height), Image.LANCZOS)
-            img.save(out_path, "PNG")
-        tmp.unlink(missing_ok=True)
-        return out_path
+        try:
+            raw = base64.b64decode(data[0]["b64_json"])
+        except (ValueError, TypeError) as exc:
+            raise ProviderError(f"OpenAI returned undecodable image data: {exc}") from exc
+        return write_normalized_png(raw, out_path, request.width, request.height)

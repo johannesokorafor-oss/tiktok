@@ -129,11 +129,14 @@ uploaded twice** unless you force it.
 .\scripts\test.ps1        # or: python -m pytest tests/
 ```
 
-108 tests cover parsing, pairing, stabilization, duplicates, the state
-machine, typography, FFmpeg processing, cover-timestamp math, ffprobe
-validation, OAuth/token handling, TikTok request construction, retries,
-rate limits and the full dry-run pipeline (TikTok itself is mocked in
-tests; everything else is real).
+137 tests cover parsing, pairing, stabilization, slow-copy safety,
+duplicates, the state machine, restart recovery, concurrency guards,
+typography (incl. umlauts and clipping), FFmpeg processing,
+cover-timestamp math (incl. fractional frame rates and a pixel-level
+check that the frame at `video_cover_timestamp_ms` really is the cover),
+ffprobe validation, OAuth/token handling, TikTok request construction,
+retries, rate limits, corrupt-provider payloads and the full dry-run
+pipeline (TikTok itself is mocked in tests; everything else is real).
 
 ## Security
 

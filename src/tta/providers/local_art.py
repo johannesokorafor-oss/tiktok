@@ -138,6 +138,7 @@ class LocalArtProvider(ImageProvider):
 
     def generate(self, request: ImageRequest, out_path: Path) -> Path:
         try:
+            out_path = Path(out_path)
             rng = random.Random(_seed_from(request))
             size = (request.width, request.height)
             style = (request.style or "CLEAN_MODERN").upper()

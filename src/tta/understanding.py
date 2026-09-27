@@ -31,6 +31,10 @@ _DE_STOPWORDS = {
     "wirst", "bist", "hast", "so", "da", "hier", "jetzt", "immer", "alle",
     "etwas", "kein", "keine", "durch", "gegen", "ohne", "bis", "sondern",
     "manchmal", "wirklich", "vielleicht", "wieder", "ganz", "sogar",
+    "deiner", "deinem", "deinen", "meiner", "meinem", "meinen", "mein",
+    "meine", "seiner", "seinem", "seinen", "ihrer", "ihrem", "ihren",
+    "ihre", "unser", "unsere", "unserer", "euer", "eure", "eurer",
+    "dieselbe", "derselbe", "solche", "solcher", "welche", "welcher",
 }
 
 _EN_STOPWORDS = {
@@ -208,14 +212,29 @@ def _title_case(word: str) -> str:
 def make_cover_text(title: str, keywords: list[str], language: str) -> str:
     """2-4 readable words taken from the actual content."""
     stop = _DE_STOPWORDS if language == "de" else _EN_STOPWORDS
-    # Prefer meaningful words from the title, in original order.
-    title_words = [w for w in _tokenize(title) if w.lower() not in stop]
-    picked: list[str] = []
-    for w in title_words:
-        if len(picked) >= 3:
-            break
-        if w.lower() not in [p.lower() for p in picked]:
-            picked.append(w)
+    # Prefer meaningful words from the title, in original order (dedup).
+    title_words: list[str] = []
+    for w in _tokenize(title):
+        if w.lower() in stop:
+            continue
+        if w.lower() not in [p.lower() for p in title_words]:
+            title_words.append(w)
+
+    if len(title_words) > 3 and language == "de":
+        # German capitalizes nouns: when we must drop words, prefer keeping
+        # nouns (subject/object) over adjectives/verbs so the cover text
+        # stays grammatically complete ("Disziplin schafft Wohlstand"
+        # instead of the dangling "Disziplin schafft echten").
+        scored = sorted(
+            range(len(title_words)),
+            key=lambda i: -(
+                (2.0 if title_words[i][0].isupper() else 0.0)
+                + len(title_words[i]) / 10.0
+            ),
+        )[:3]
+        picked = [title_words[i] for i in sorted(scored)]
+    else:
+        picked = title_words[:3]
     # Top up from keywords only if the title was too thin (< 2 usable words).
     if len(picked) < 2:
         for kw in keywords:
@@ -246,8 +265,9 @@ def make_hook(title: str, description: str, language: str) -> str:
         hook = first_sentence
     else:
         hook = " ".join(words[:8]).rstrip(",;:") + " …"
-    # keep it punchy
+    # keep it punchy and clean: no trailing dots, no "!!!"/"???" pile-ups
     hook = hook.strip().rstrip(".")
+    hook = re.sub(r"([!?])[!?]+$", r"\1", hook)
     return hook
 
 

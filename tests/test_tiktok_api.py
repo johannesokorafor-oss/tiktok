@@ -66,6 +66,19 @@ def test_token_store_roundtrip(tmp_path):
     assert store.load() == {}
 
 
+def test_refresh_token_preserved_when_response_omits_it(tmp_path):
+    """Per TikTok docs, a refresh response may omit refresh_token - the
+    stored one must survive."""
+    store = TokenStore(tmp_path / "tokens.json")
+    store.save({"access_token": "act.a", "refresh_token": "rft.keepme",
+                "expires_in": 100, "refresh_expires_in": 31536000})
+    store.save({"access_token": "act.b", "expires_in": 100})  # no refresh_token
+    data = store.load()
+    assert data["access_token"] == "act.b"
+    assert data["refresh_token"] == "rft.keepme"
+    assert store.is_refresh_valid()
+
+
 def test_token_expiry(tmp_path):
     store = TokenStore(tmp_path / "tokens.json")
     store.save({"access_token": "act.x", "expires_at": time.time() - 10})

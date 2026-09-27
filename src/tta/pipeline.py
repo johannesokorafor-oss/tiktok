@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -45,10 +46,20 @@ class Pipeline:
         self.registry = registry or build_registry(config)
         # uploader: callable(job, final_path, plan, timestamp_ms) -> dict
         self.uploader = uploader
+        # guard against the same job being executed concurrently
+        # (e.g. dashboard retry thread + watcher retry loop)
+        self._active_lock = threading.Lock()
+        self._active: set[str] = set()
 
     # ------------------------------------------------------------------
     def run_job(self, job: db.Job, force: bool = False) -> db.Job:
         """Run the whole pipeline for one job. Never raises for job errors."""
+        with self._active_lock:
+            if job.id in self._active:
+                log.info("job %s is already running - ignoring duplicate start",
+                         job.id)
+                return self.store.get(job.id) or job
+            self._active.add(job.id)
         try:
             self._execute(job, force=force)
         except PipelineError as exc:
@@ -56,6 +67,9 @@ class Pipeline:
         except Exception as exc:  # defensive: unexpected bug should not kill watcher
             log.exception("unexpected error in job %s", job.id)
             self._fail(job, f"unexpected error: {exc}")
+        finally:
+            with self._active_lock:
+                self._active.discard(job.id)
         return self.store.get(job.id) or job
 
     def _fail(self, job: db.Job, message: str) -> None:

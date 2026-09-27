@@ -16,7 +16,13 @@ from pathlib import Path
 
 import requests
 
-from .base import CostClass, ImageProvider, ImageRequest, ProviderError
+from .base import (
+    CostClass,
+    ImageProvider,
+    ImageRequest,
+    ProviderError,
+    write_normalized_png,
+)
 
 # Minimal SD txt2img workflow in ComfyUI API format.
 DEFAULT_WORKFLOW = {
@@ -141,16 +147,5 @@ class ComfyUIProvider(ImageProvider):
             raise ProviderError(f"ComfyUI image download failed: {exc}") from exc
         if not img_resp.ok:
             raise ProviderError(f"ComfyUI /view HTTP {img_resp.status_code}")
-
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out_path.with_suffix(".tmp")
-        tmp.write_bytes(img_resp.content)
-        from PIL import Image
-
-        with Image.open(tmp) as img:
-            img = img.convert("RGB")
-            if img.size != (request.width, request.height):
-                img = img.resize((request.width, request.height), Image.LANCZOS)
-            img.save(out_path, "PNG")
-        tmp.unlink(missing_ok=True)
-        return out_path
+        return write_normalized_png(img_resp.content, out_path,
+                                    request.width, request.height)

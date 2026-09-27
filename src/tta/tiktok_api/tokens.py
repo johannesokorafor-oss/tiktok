@@ -30,9 +30,19 @@ class TokenStore:
                 return {}
 
     def save(self, tokens: dict) -> None:
-        """Persist token payload; adds absolute expiry timestamps."""
+        """Persist token payload; adds absolute expiry timestamps.
+
+        If the new payload lacks a refresh_token (some refresh responses may
+        omit it), the previously stored one is preserved so the user is not
+        silently logged out.
+        """
         now = time.time()
         data = dict(tokens)
+        existing = self.load()
+        if not data.get("refresh_token") and existing.get("refresh_token"):
+            data["refresh_token"] = existing["refresh_token"]
+            if "refresh_expires_at" in existing and "refresh_expires_in" not in data:
+                data["refresh_expires_at"] = existing["refresh_expires_at"]
         if "expires_in" in data and "expires_at" not in data:
             data["expires_at"] = now + float(data["expires_in"])
         if "refresh_expires_in" in data and "refresh_expires_at" not in data:

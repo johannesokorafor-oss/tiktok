@@ -13,7 +13,13 @@ from pathlib import Path
 
 import requests
 
-from .base import CostClass, ImageProvider, ImageRequest, ProviderError
+from .base import (
+    CostClass,
+    ImageProvider,
+    ImageRequest,
+    ProviderError,
+    write_normalized_png,
+)
 
 BASE_URL = "https://image.pollinations.ai"
 
@@ -60,16 +66,5 @@ class PollinationsProvider(ImageProvider):
         content_type = resp.headers.get("Content-Type", "")
         if "image" not in content_type:
             raise ProviderError(f"pollinations returned non-image ({content_type})")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out_path.with_suffix(".tmp")
-        tmp.write_bytes(resp.content)
-        # normalize to PNG at the exact requested size
-        from PIL import Image
-
-        with Image.open(tmp) as img:
-            img = img.convert("RGB")
-            if img.size != (request.width, request.height):
-                img = img.resize((request.width, request.height), Image.LANCZOS)
-            img.save(out_path, "PNG")
-        tmp.unlink(missing_ok=True)
-        return out_path
+        return write_normalized_png(resp.content, out_path,
+                                    request.width, request.height)
