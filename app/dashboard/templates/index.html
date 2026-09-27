@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TikTok Draft Upload Automation</title>
+<style>
+  :root { --bg:#0c0e14; --panel:#151926; --panel2:#1c2133; --txt:#e9ecf5; --dim:#96a0bb;
+          --ok:#3ddc97; --warn:#ffce5c; --err:#ff6b6b; --accent:#7c9dff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:14px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif; }
+  header { padding:18px 24px; background:linear-gradient(90deg,#161a2b,#0d1018);
+           border-bottom:1px solid #262c42; display:flex; gap:16px; align-items:center; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.3px; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:12px; background:var(--panel2); color:var(--dim); }
+  .pill.on { background:rgba(61,220,151,.15); color:var(--ok); }
+  .pill.off { background:rgba(255,107,107,.15); color:var(--err); }
+  .pill.warn { background:rgba(255,206,92,.15); color:var(--warn); }
+  main { display:grid; grid-template-columns: 340px 1fr; gap:18px; padding:18px 24px; }
+  .card { background:var(--panel); border:1px solid #232941; border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); margin:0 0 12px; }
+  .kv { display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px dashed #232941; }
+  .kv:last-child { border-bottom:0; }
+  .kv span:first-child { color:var(--dim); }
+  button { background:var(--panel2); color:var(--txt); border:1px solid #2c3450; border-radius:8px;
+           padding:7px 12px; cursor:pointer; font-size:13px; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#0b1020; border-color:var(--accent); font-weight:600; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #232941; font-size:13px; vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+  tr.sel { background:#1a2036; }
+  tr:hover { background:#181d2e; cursor:pointer; }
+  .state { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--panel2); }
+  .state.COMPLETED,.state.UPLOADED { background:rgba(61,220,151,.16); color:var(--ok); }
+  .state.FAILED { background:rgba(255,107,107,.16); color:var(--err); }
+  .state.RETRY_PENDING,.state.WAITING_FOR_PAIR,.state.DUPLICATE { background:rgba(255,206,92,.16); color:var(--warn); }
+  .detail-single { display:block; }
+  .steps { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 14px; }
+  .step { padding:6px 10px; border-radius:8px; background:var(--panel2); font-size:12px;
+          color:var(--dim); border:1px solid #2c3450; }
+  .step.done { background:rgba(61,220,151,.14); color:var(--ok); border-color:rgba(61,220,151,.4); }
+  .step.todo { background:rgba(255,206,92,.14); color:var(--warn); border-color:rgba(255,206,92,.4); }
+  textarea,input,select { width:100%; background:#10141f; color:var(--txt); border:1px solid #2c3450;
+           border-radius:8px; padding:8px; font:13px/1.4 inherit; margin-bottom:8px; }
+  pre { background:#10141f; border:1px solid #232941; border-radius:8px; padding:10px; overflow:auto;
+        max-height:260px; font-size:12px; color:#c8d2ee; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .muted { color:var(--dim); font-size:12px; }
+  .err { color:var(--err); }
+  .badge { display:inline-block; padding:3px 9px; border-radius:6px; font-size:11px;
+           letter-spacing:.06em; font-weight:600; }
+  .badge.ai { background:rgba(61,220,151,.16); color:var(--ok); }
+  .badge.fallback { background:rgba(255,206,92,.18); color:var(--warn); }
+  .note { font-size:12px; color:var(--dim); line-height:1.5; margin-top:8px; }
+  .tier { font-size:11px; color:var(--dim); }
+  .copybox { display:flex; gap:8px; align-items:flex-start; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TikTok Draft Upload Automation</h1>
+  <span id="hdr-watcher" class="pill">watcher …</span>
+  <span id="hdr-mode" class="pill">mode …</span>
+
+  <span id="hdr-auth" class="pill">tiktok …</span>
+  <span id="hdr-steps" class="pill">pipeline …</span>
+  <span style="flex:1"></span>
+  <button onclick="ctl('scan')">Scan now</button>
+  <button onclick="ctl('start')">Start</button>
+  <button onclick="ctl('stop')">Stop</button>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <h2>Watcher</h2>
+      <div id="watcher-info"></div>
+      <div class="row" style="margin-top:10px">
+        <button onclick="openFolder(null)">Open output folder</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>TikTok</h2>
+      <div id="auth-info"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" onclick="location.href='/tiktok/login'">Connect</button>
+        <button onclick="post('/api/tiktok/refresh')">Refresh token</button>
+        <button onclick="post('/api/tiktok/logout')">Disconnect</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Platforms</h2>
+      <div id="platforms"></div>
+      <div class="row" style="margin-top:10px" id="ig-buttons"></div>
+      <div class="note" id="ig-note"></div>
+    </div>
+    <div class="card">
+      <h2>Thumbnail / Cover</h2>
+      <div class="note">
+        <b>User creates and selects this manually in TikTok.</b><br />
+        This application never generates, downloads or embeds a cover image, and it
+        never modifies the beginning of your video. The uploaded file contains only
+        your original content.<br />
+        <b>Instagram cover: selected manually by the user.</b>
+      </div>
+    </div>
+    <div class="card">
+      <h2>How publishing works</h2>
+      <div class="note">
+        The final MP4 is uploaded through the official TikTok Content Posting API into your
+        <b>inbox as a draft</b>. You then open the TikTok notification, choose your own cover,
+        review the caption and press <b>Post</b> yourself — this app never publishes for you.
+        The Upload/Draft endpoint accepts neither a cover image nor a caption, so the caption
+        is prepared here for you to paste.
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Jobs</h2>
+      <table><thead><tr><th>Job</th><th>Video</th><th>State</th><th>Language</th><th>Upload</th></tr></thead>
+      <tbody id="jobs"></tbody></table>
+    </div>
+    <div class="card" id="detail-card" style="display:none">
+      <h2>Job detail</h2>
+      <div class="detail-single">
+        </div>
+        <div>
+          <div id="detail-info"></div>
+          <h3 style="font-size:13px;color:var(--dim)">Caption for the TikTok editor</h3>
+          <textarea id="caption" rows="4" readonly></textarea>
+          <div class="row">
+            <button class="primary" onclick="copyCaption()">Copy caption</button>
+            <span id="copy-state" class="muted"></span>
+          </div>
+
+          <h3 style="font-size:13px;color:var(--dim)">Overrides (applied on regenerate)</h3>
+          <input id="ov-title" placeholder="title override (optional)" />
+          <textarea id="ov-caption" rows="3" placeholder="TikTok caption override (optional)"></textarea>
+          <div class="row">
+            <button class="primary" onclick="saveAndReprocess()">Save &amp; reprocess</button>
+            <button onclick="retry(false)">Retry</button>
+            <button onclick="retry(true)">Force reprocess</button>
+            <button onclick="openFolder(currentOutput)">Open folder</button>
+            <button id="btn-ig-prepare" onclick="prepareInstagram()" style="display:none">
+              Prepare Instagram Upload</button>
+            <button id="btn-ig-status" onclick="refreshInstagram()" style="display:none">
+              Refresh Instagram status</button>
+          </div>
+          <h3 style="font-size:13px;color:var(--dim)">Events</h3>
+          <pre id="events"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+let currentJob = null, currentOutput = null, instagramEnabled = false;
+
+const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+async function get(u){ const r = await fetch(u); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+async function post(u, body){ const r = await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
+  body: body? JSON.stringify(body): '{}'}); refresh(); return r.json().catch(()=>({})); }
+async function ctl(a){ await post('/api/watcher/'+a); refresh(); }
+function openFolder(p){ post('/api/open-folder', {path: p || ''}); }
+
+function kv(k,v){ return `<div class="kv"><span>${esc(k)}</span><span>${v}</span></div>`; }
+
+async function refresh(){
+  try {
+    const s = await get('/api/status');
+    const w = s.watcher, st = s.settings;
+    document.getElementById('hdr-watcher').className = 'pill ' + (w.running?'on':'off');
+    document.getElementById('hdr-watcher').textContent = 'watcher ' + (w.running?'running':'stopped');
+    const mode = s.mode || {effective: st.dry_run?'DRY_RUN':'DRAFT_UPLOAD', warnings: []};
+    const modeEl = document.getElementById('hdr-mode');
+    modeEl.className = 'pill ' + (mode.effective==='DRY_RUN'?'warn':(mode.effective==='DIRECT_POST'?'off':'on'));
+    modeEl.textContent = 'MODE: ' + mode.effective + (st.tiktok_mock? ' (mock)':'');
+    modeEl.title = (mode.warnings||[]).join(' ');
+    const a = s.tiktok;
+    document.getElementById('hdr-auth').className = 'pill ' + (a.authenticated?'on':'off');
+    document.getElementById('hdr-auth').textContent = 'tiktok ' + (a.authenticated?'connected':'not connected');
+    const st2 = s.watcher;
+    const stepsEl = document.getElementById('hdr-steps');
+    stepsEl.className = 'pill on';
+    stepsEl.textContent = 'video → TikTok draft (cover: manual)';
+
+    document.getElementById('watcher-info').innerHTML =
+      kv('folder', esc(w.watch_dir)) + kv('recursive', w.recursive) +
+      kv('stability', w.stability_seconds + 's') + kv('current job', esc(w.current_job||'—')) +
+      kv('video quality', esc(st.video_quality_mode)) +
+      kv('post mode', esc(st.post_mode)) + kv('AIGC flag', st.content_is_aigc) +
+
+      (w.errors && w.errors.length ? `<div class="err">${esc(w.errors[0])}</div>`:'');
+
+    document.getElementById('auth-info').innerHTML =
+      kv('client configured', a.client_configured) + kv('authenticated', a.authenticated) +
+      kv('open id', esc(a.open_id||'—')) + kv('scopes', esc(a.scope || a.scopes)) +
+      kv('token expires in', a.expires_in_seconds + 's') + kv('redirect', esc(a.redirect_uri));
+
+
+    const pf = s.platforms || {};
+    const ig = pf.instagram || {status: 'DISABLED', detail: ''};
+    document.getElementById('platforms').innerHTML =
+      kv('TikTok', `${esc(pf.tiktok ? pf.tiktok.mode : '—')} · ${pf.tiktok && pf.tiktok.connected ? 'connected' : 'not connected'}`) +
+      kv('TikTok note', esc(pf.tiktok ? pf.tiktok.note : '')) +
+      kv('Instagram', `<span class="badge ${ig.status==='READY_TO_PUBLISH'?'ai':'fallback'}">${esc(ig.status)}</span>`) +
+      kv('Instagram detail', esc(ig.detail || '')) +
+      kv('Instagram mode', esc((ig.mode || 'UPLOAD_ONLY') + ' · upload only')) +
+      kv('Automatic publish', '<span class="badge fallback">DISABLED</span>');
+    instagramEnabled = ig.status !== 'DISABLED';
+    document.getElementById('ig-note').textContent = ig.note ||
+      'Instagram is optional and disabled by default (INSTAGRAM_ENABLED=false).';
+    document.getElementById('ig-buttons').innerHTML = (ig.status === 'DISABLED') ? '' : `
+      <button onclick="location.href='/instagram/login'">Connect Instagram</button>
+      <button onclick="testInstagram()">Test Instagram Connection</button>
+      <button onclick="testInstagramUpload()">Test Instagram Upload</button>`;
+
+    const j = await get('/api/jobs?limit=30');
+    document.getElementById('jobs').innerHTML = j.jobs.map(job => `
+      <tr class="${job.id===currentJob?'sel':''}" onclick="showJob('${job.id}')">
+        <td>${esc(job.id)}</td><td>${esc(job.base_name)}</td>
+        <td><span class="state ${esc(job.state)}">${esc(job.state)}</span></td>
+        <td>${esc(job.plan? job.plan.language : '—')}</td>
+        <td>${esc(job.upload_status || (job.dry_run?'dry-run':'—'))}${job.error?` <span class="err">!</span>`:''}</td>
+      </tr>`).join('');
+    if (currentJob) showJob(currentJob, true);
+  } catch(e){ console.error(e); }
+}
+
+async function showJob(id, quiet){
+  currentJob = id;
+  const job = await get('/api/jobs/'+id);
+  currentOutput = job.output_dir;
+  document.getElementById('detail-card').style.display = 'block';
+  const plan = job.plan || {};
+  const done = job.state === 'COMPLETED';
+  const uploaded = !!job.publish_id;
+  document.getElementById('job-steps').innerHTML = [
+    ['VIDEO READY', !!job.final_video_path],
+    ['CAPTION READY', !!(plan && plan.caption)],
+    [job.dry_run? 'TIKTOK UPLOAD SKIPPED (DRY RUN)' : 'TIKTOK DRAFT UPLOAD', uploaded],
+    ...(igp ? [['INSTAGRAM ' + igp.status, igp.status === 'READY_TO_PUBLISH']] : []),
+    ['USER MUST FINISH COVER + FINAL EDIT IN TIKTOK', false],
+  ].map(([label, ok]) => `<span class="step ${ok?'done':'todo'}">${ok?'✓':'•'} ${esc(label)}</span>`).join('');
+  const plat = job.platforms || {};
+  const igp = plat.instagram;
+  document.getElementById('btn-ig-prepare').style.display =
+    (job.final_video_path && instagramEnabled) ? '' : 'none';
+  document.getElementById('btn-ig-status').style.display =
+    (igp && igp.external_id) ? '' : 'none';
+  document.getElementById('detail-info').innerHTML =
+    kv('state', esc(job.state)) + kv('video', esc(job.video_path)) +
+    kv('sha256', esc((job.video_sha256||'').slice(0,16)+'…')) +
+    kv('language', esc(plan.language)) + kv('topic', esc(plan.topic)) +
+    kv('hashtags', esc((plan.hashtags||[]).join(' '))) +
+    kv('final video', esc(job.final_video_path||'—')) +
+    kv('publish id', esc(job.publish_id||'—')) + kv('upload status', esc(job.upload_status||'—')) +
+    kv('output', esc(job.output_dir||'—')) +
+    kv('TikTok', esc(plat.tiktok ? plat.tiktok.status : '—')) +
+    (igp ? kv('Instagram', esc(igp.status) + (igp.external_id? ' · container '+esc(igp.external_id):'')
+              + (igp.error? ' · <span class="err">'+esc(igp.error)+'</span>':'')) : '') +
+    (job.error? `<div class="err">${esc(job.error)}</div>`:'');
+  try {
+    const cap = await get(`/api/jobs/${id}/caption`);
+    document.getElementById('caption').value = cap.caption || '';
+  } catch(e) { }
+  document.getElementById('events').textContent = (job.events||[]).map(e =>
+    `${e.ts}  ${e.event}  ${e.message||''}`).join('\n');
+  if (!quiet){
+    document.getElementById('ov-title').value = (job.overrides||{}).title || '';
+    document.getElementById('ov-caption').value = (job.overrides||{}).caption || '';
+  }
+}
+
+async function saveAndReprocess(){
+  if(!currentJob) return;
+  await post(`/api/jobs/${currentJob}/overrides`, {
+    caption: document.getElementById('ov-caption').value || null,
+    title: document.getElementById('ov-title').value || null});
+  await post(`/api/jobs/${currentJob}/retry?force=true`);
+}
+async function testInstagram(){
+  const r = await post('/api/instagram/test-connection');
+  alert('Instagram connection: ' + (r.detail || r.status || 'unknown')
+        + (r.account_type ? ('\naccount type: ' + r.account_type) : ''));
+}
+async function testInstagramUpload(){
+  if(!currentJob){ alert('Select a job first, then press Test Instagram Upload.'); return; }
+  const r = await post(`/api/jobs/${currentJob}/instagram/prepare`);
+  alert(r.note || 'Instagram upload queued (upload only, never published).');
+}
+async function prepareInstagram(){
+  if(!currentJob) return;
+  const r = await post(`/api/jobs/${currentJob}/instagram/prepare`);
+  alert(r.note || 'Instagram upload queued (upload only, never published).');
+}
+async function refreshInstagram(){
+  if(!currentJob) return;
+  const r = await post(`/api/jobs/${currentJob}/instagram/refresh-status`);
+  alert('Instagram container status: ' + (r.status || 'unknown'));
+}
+async function copyCaption(){
+  const box = document.getElementById('caption');
+  box.select();
+  try {
+    await navigator.clipboard.writeText(box.value);
+    document.getElementById('copy-state').textContent = 'copied';
+  } catch(e) {
+    document.execCommand('copy');
+    document.getElementById('copy-state').textContent = 'copied';
+  }
+  setTimeout(()=>document.getElementById('copy-state').textContent='', 2000);
+}
+async function retry(force){ if(currentJob) await post(`/api/jobs/${currentJob}/retry?force=${force}`); }
+
+refresh(); setInterval(refresh, 4000);
+</script>
+</body>
+</html>
