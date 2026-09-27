@@ -1,0 +1,38 @@
+# secrets
+.env
+*.secret
+tokens/
+credentials/
+state/tiktok_tokens.json
+
+# runtime state & artifacts
+state/
+logs/
+processing/
+covers/
+failed/
+archive/
+output/
+input/*
+!input/.gitkeep
+!examples/
+
+# python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+
+# os / editors
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/
+.vscode/
+tests/output/
+tests/fixtures/*.mp4
